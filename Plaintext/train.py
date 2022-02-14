@@ -12,7 +12,7 @@ from zlProject.test.modelUpdateEfficientNet1 import efficientnet_b0 as create_mo
 from zlProject.test.my_dataset import MyDataSet
 from zlProject.test.utils import read_split_data, train_one_epoch, evaluate
 
-savePath = '/data1/zl/first/model_efficientNet/weights-pretrain-coco-copy-move-B0/model-loss.txt'
+savePath = ''
 
 
 def main(args):
@@ -21,8 +21,8 @@ def main(args):
     print(args)
     print('Start Tensorboard with "tensorboard --logdir=runs", view at http://localhost:6006/')
     tb_writer = SummaryWriter()
-    if os.path.exists("./weights-pretrain-coco-copy-move-B0") is False:
-        os.makedirs("./weights-pretrain-coco-copy-move-B0")
+    if os.path.exists("./") is False:
+        os.makedirs("./")
 
     train_images_path, train_images_label, val_images_path, val_images_label = read_split_data(args.data_path)
 
@@ -140,15 +140,11 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=0.0001)
     parser.add_argument('--lrf', type=float, default=0.0001)
 
-    # 数据集所在根目录
-    # http://download.tensorflow.org/example_images/flower_photos.tgz
     parser.add_argument('--data-path', type=str,
-                        default="/data1/zl/first/preTrain/coco_copy_move")
+                        default="")
 
-    # download model weights
-    # 链接: https://pan.baidu.com/s/1ouX0UmjCsmSx3ZrqXbowjw  密码: 090i
     parser.add_argument('--weights', type=str,
-                        default='/data1/zl/first/model_efficientNet/efficientnetb0.pth',
+                        default='',
                         help='initial weights path')
     parser.add_argument('--freeze-layers', type=bool, default=False)
     parser.add_argument('--device', default='cuda:0', help='device id (i.e. 0 or 0,1 or cpu)')

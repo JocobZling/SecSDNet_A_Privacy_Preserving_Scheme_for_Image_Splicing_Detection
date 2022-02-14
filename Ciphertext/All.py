@@ -587,7 +587,7 @@ def random_c():
 
 def get_model():
     model = create_model(num_classes=2).to('cpu')
-    model.load_state_dict(torch.load('C:\\Users\\zl\\Desktop\\casia1.0\\model-B0-A-0807-495.pth', map_location='cpu'))
+    model.load_state_dict(torch.load('', map_location='cpu'))
     return model
 
 
@@ -1120,20 +1120,7 @@ if __name__ == '__main__':
          transforms.ToTensor()
          ])
 
-    # load image
-    # img_path = "C:\\Users\\zl\\Desktop\\casia2.0\\1_real\\real2.png"
-    # assert os.path.exists(img_path), "file: '{}' dose not exist.".format(img_path)
-    # img = Image.open(img_path)
-    #
-    # img = data_transform(img)
-    # # expand batch dimension
-    # img = torch.unsqueeze(img, dim=0)
-    # image_1 = torch.tensor(np.random.random(img.shape))
-    # image_2 = img - image_1
-    # result = Model(image_1, image_2, conv1_0, conv1_1BN, conv2_0, conv2_1BN, conv3_0, conv3_1BN, conv4_0, conv4_1BN,
-    #                conv5_0, conv5_1BN, liner6_1, liner6_2, new_model)
-    # print(result)
-    testData = dsets.ImageFolder('C:\\Users\\zl\\Desktop\\CASIA1.0\\test\\', data_transform)
+    testData = dsets.ImageFolder('', data_transform)
     testLoader = torch.utils.data.DataLoader(dataset=testData, batch_size=10, shuffle=False)
     correct = 0
     total = 0
