@@ -6,24 +6,64 @@ from torch.multiprocessing import Manager, Pipe
 import numpy as np
 import torchvision.datasets as dsets
 from multiprocessing import Process
-from SecSDNet_A_Privacy_Preserving_Scheme_for_Image_Splicing_Detection.Plaintext.model import efficientnet_b0 as create_model
+from zlProject.model import efficientnet_b0 as create_model
 from torch.nn import functional as F
+from PIL import Image
+import os
 
 import torch
 import torch.quantization
 import random
+import time
 
 
-def formatSigmoid(out):
-    # if torch.any(out > 50):
-    #     out = out - 20
-    # if torch.any(out < -50):
-    #     out = out + 20
-    # if torch.any(torch.is(out)):
-    #     out = torch.where(torch.isnan(out), torch.full_like(out, 1e+10), out)
-    # out = torch.mean(out)
-    return torch.clamp(out, -80, 80)
-    # return out
+
+def formatSigmoid1(out, dict_manager, event1, event2):
+    pre = out
+    out = torch.where(out < -10, out + 5, out)
+    out = torch.where(out > 10, out - 5, out)
+    out = torch.where(out < -20, out + 10, out)
+    out = torch.where(out > 20, out - 10, out)
+    out = torch.where(out < -30, out + 15, out)
+    out = torch.where(out > 30, out - 15, out)
+    out = torch.where(out < -40, out + 20, out)
+    out = torch.where(out > 40, out - 20, out)
+    out = torch.where(out < -50, out + 25, out)
+    out = torch.where(out > 50, out - 25, out)
+    mask = out - pre
+    dict_manager.update({'subtract1': mask})
+    event1.set()
+    event2.wait()
+
+    subtract2 = dict_manager['subtract2']
+    event1.clear()
+    out = out - torch.ones_like(out) * subtract2
+    return out
+
+
+def formatSigmoid2(out, dict_manager, event1, event2):
+    pre = out
+    out = torch.where(out < -10, out + 5, out)
+    out = torch.where(out > 10, out - 5, out)
+    out = torch.where(out < -20, out + 10, out)
+    out = torch.where(out > 20, out - 10, out)
+    out = torch.where(out < -30, out + 15, out)
+    out = torch.where(out > 30, out - 15, out)
+    out = torch.where(out < -40, out + 20, out)
+    out = torch.where(out > 40, out - 20, out)
+    out = torch.where(out < -50, out + 25, out)
+    out = torch.where(out > 50, out - 25, out)
+    mask = out - pre
+    dict_manager.update({'subtract2': mask})
+    event2.set()
+    event1.wait()
+
+    subtract1 = dict_manager['subtract1']
+    event2.clear()
+    out = out - torch.ones_like(out) * subtract1
+    return out
+
+
 
 
 def generate_share3(Conv, a, b, c):
@@ -52,7 +92,8 @@ def reluForServer1(input, dict_manager, event1, event2, event3, event4, a1, b1, 
     (A1, B1, C1, _, Alpha1, Beta1) = generate_share3(input, a1, b1, c1)
 
     dict_manager.update({'Alpha1': Alpha1, 'Beta1': Beta1})
-
+    # write(Alpha1)
+    # write(Beta1)
     event2.set()
     event1.wait()
 
@@ -62,7 +103,7 @@ def reluForServer1(input, dict_manager, event1, event2, event3, event4, a1, b1, 
     F1 = C1 + B1.mul(Alpha1 + Alpha2) + A1.mul(Beta1 + Beta2)
 
     dict_manager.update({'F1': F1})
-
+    # write(F1)
     event4.set()
     event3.wait()
     event2.clear()
@@ -75,7 +116,8 @@ def reluForServer1(input, dict_manager, event1, event2, event3, event4, a1, b1, 
 def reluForServer2(input, dict_manager, event1, event2, event3, event4, a2, b2, c2):
     (A2, B2, C2, _, Alpha2, Beta2) = generate_share3(input, a2, b2, c2)
     dict_manager.update({'Alpha2': Alpha2, 'Beta2': Beta2})
-
+    # write(Alpha2)
+    # write(Beta2)
     event1.set()
     event2.wait()
 
@@ -86,7 +128,7 @@ def reluForServer2(input, dict_manager, event1, event2, event3, event4, a2, b2, 
 
     dict_manager.update({'F2': F2})
     # print(getsizeof(F2.storage()))
-
+    # write(F2)
     event3.set()
     event4.wait()
     event1.clear()
@@ -100,12 +142,13 @@ def reluForServer2(input, dict_manager, event1, event2, event3, event4, a2, b2, 
 
 
 def serverSigmoidAll1(u1, c1_mul, c1_res, t1, a1, b1, c1, dict_manager, event1, event2, event3, event4, event5, event6):
-    u1 = formatSigmoid(u1)
+    u1 = formatSigmoid1(u1, dict_manager, event5, event6)
     x = torch.exp(-u1)
     A1 = x / c1_mul
 
     # exp
     dict_manager.update({'A1': A1})
+    # write(A1)
 
     event2.set()
     event1.wait()
@@ -128,7 +171,10 @@ def serverSigmoidAll1(u1, c1_mul, c1_res, t1, a1, b1, c1, dict_manager, event1, 
     f3 = t1 - b1
 
     dict_manager.update({'e1': e1, 'f1': f1, 'e3': e3, 'f3': f3})
-
+    # write(e1)
+    # write(f1)
+    # write(f3)
+    # write(f3)
     event4.set()
     event3.wait()
     event2.clear()
@@ -148,6 +194,8 @@ def serverSigmoidAll1(u1, c1_mul, c1_res, t1, a1, b1, c1, dict_manager, event1, 
 
     dict_manager.update({'ty1': ty1})
 
+    # write(ty1)
+
     event6.set()
     event5.wait()
     event4.clear()
@@ -163,12 +211,12 @@ def serverSigmoidAll1(u1, c1_mul, c1_res, t1, a1, b1, c1, dict_manager, event1, 
 
 def serverSigmoidAll2(u2, c2_mul, c2_res, t2, a2, b2, c2, dict_manager, event1, event2, event3, event4, event5, event6):
     # exp
-    u2 = formatSigmoid(u2)
+    u2 = formatSigmoid2(u2, dict_manager, event5, event6)
     x = torch.exp(-u2)
     A2 = x / c2_mul
 
     dict_manager.update({'A2': A2})
-
+    # write(A2)
     event1.set()
     event2.wait()
 
@@ -189,7 +237,10 @@ def serverSigmoidAll2(u2, c2_mul, c2_res, t2, a2, b2, c2, dict_manager, event1, 
     f4 = t2 - b2
 
     dict_manager.update({'e2': e2, 'f2': f2, 'e4': e4, 'f4': f4})
-
+    # write(e2)
+    # write(f2)
+    # write(e4)
+    # write(f4)
     event3.set()
     event4.wait()
     event1.clear()
@@ -208,7 +259,7 @@ def serverSigmoidAll2(u2, c2_mul, c2_res, t2, a2, b2, c2, dict_manager, event1, 
     ty2 = c2 + b2 * eA + a2 * fA
 
     dict_manager.update({'ty2': ty2})
-
+    # write(ty2)
     event5.set()
     event6.wait()
     event3.clear()
@@ -240,6 +291,8 @@ def SecMulServer1(x1, y1, a1, b1, c1, dict_manager, event1, event2):
     f1 = y1 - b1
 
     dict_manager.update({'e1': e1, 'f1': f1})
+    # write(e1)
+    # write(f1)
     event2.set()
     event1.wait()
 
@@ -260,6 +313,8 @@ def SecMulServer2(x2, y2, a2, b2, c2, dict_manager, event1, event2):
     f2 = y2 - b2
 
     dict_manager.update({'e2': e2, 'f2': f2})
+    # write(e2)
+    # write(f2)
     event1.set()
     event2.wait()
 
@@ -305,10 +360,6 @@ def GetLinear(beforeLinear, in_features, out_features):
     return newLinear
 
 
-def format(out):
-    if torch.any(torch.isnan(out)):
-        out = torch.where(torch.isnan(out), torch.full_like(out, 1e-32), out)
-    return out
 
 
 def ConvBNReluActivationServer1(block, input, dict_manager, event1, event2, event3, event4, a1, b1, c1, c1_mul,
@@ -343,7 +394,7 @@ def ConvBNSiLuActivationServer1(block, input, dict_manager, event1, event2, even
     if flag:
         Silu1 = sigmoidMulForServer1(BN1, dict_manager, event1, event2, event3, event4, a1, b1, c1, c1_res, c1_mul, t1,
                                      dict_manager1, event5, event6)
-        return format(Silu1)
+        return Silu1
     else:
         return BN1
 
@@ -358,7 +409,7 @@ def ConvBNSiLuActivationServer2(block, input, dict_manager, event1, event2, even
     if flag:
         Silu1 = sigmoidMulForServer2(BN1.data, dict_manager, event1, event2, event3, event4, a1, b1, c1, c1_res, c1_mul,
                                      t1, dict_manager1, event5, event6)
-        return format(Silu1)
+        return Silu1
     else:
         return BN1
 
@@ -367,7 +418,6 @@ def AvgLinearSiLuServer1(block, input, dict_manager, event1, event2, event3, eve
                          in_features, out_features, dict_manager1, event5, event6):
     block = nn.Sequential(*list(block.children()))[:]
     avg = nn.AdaptiveAvgPool2d(1)(input)
-    avg = format(avg)
     avg = torch.flatten(avg, 1)
     linear1 = GetLinear(block[1], in_features, out_features)(avg)
     Silu = sigmoidMulForServer1(linear1, dict_manager, event1, event2, event3, event4, a1, b1, c1, c1_res, c1_mul, t1,
@@ -379,7 +429,6 @@ def AvgLinearSiLuServer2(block, input, dict_manager, event1, event2, event3, eve
                          in_features, out_features, dict_manager1, event5, event6):
     block = nn.Sequential(*list(block.children()))[:]
     avg = nn.AdaptiveAvgPool2d(1)(input)
-    # avg = format(avg)
     avg = torch.flatten(avg, 1)
     linear1 = GetLinear(block[1], in_features, out_features)(avg)
     Silu = sigmoidMulForServer2(linear1, dict_manager, event1, event2, event3, event4, a1, b1, c1, c1_res, c1_mul, t1,
@@ -400,7 +449,7 @@ def InvertedResidualServer1(block, input, dict_manager, event1, event2, event3, 
     convBNActivation2 = ConvBNSiLuActivationServer1(block[2], squeezeExcitation, dict_manager, event1, event2, event3,
                                                     event4, a1, b1, c1, c1_mul, c1_res, t1, False, BN_channel2,
                                                     dict_manager1, event5, event6, event7, event8)
-    return format(convBNActivation2)
+    return convBNActivation2
 
 
 def InvertedResidualServer2(block, input, dict_manager, event1, event2, event3, event4, a1, b1, c1, c1_mul, c1_res, t1,
@@ -417,7 +466,7 @@ def InvertedResidualServer2(block, input, dict_manager, event1, event2, event3, 
                                                     event4, a1, b1, c1, c1_mul, c1_res, t1, False, BN_channel2,
                                                     dict_manager1, event5, event6)
 
-    return format(convBNActivation2)
+    return convBNActivation2
 
 
 def InvertedResidualWithExpandServer1(block, input, dict_manager, event1, event2, event3, event4, a1, b1, c1, c1_mul,
@@ -438,7 +487,7 @@ def InvertedResidualWithExpandServer1(block, input, dict_manager, event1, event2
                                                     event3, event4, a1, b1, c1, c1_mul, c1_res, t1, False, BN_channel2,
                                                     dict_manager1, event5, event6, event7, event8)
 
-    return format(convBNActivation3)
+    return convBNActivation3
 
 
 def InvertedResidualWithExpandServer2(block, input, dict_manager, event1, event2, event3, event4, a1, b1, c1, c1_mul,
@@ -462,14 +511,13 @@ def InvertedResidualWithExpandServer2(block, input, dict_manager, event1, event2
                                                     event3,
                                                     event4, a1, b1, c1, c1_mul, c1_res, t1, False, BN_channel2,
                                                     dict_manager1, event5, event6)
-    return format(convBNActivation3)
+    return convBNActivation3
 
 
 def SEBlock1(block, input, dict_manager, event1, event2, event3, event4, a1, b1,
              c1, c1_mul, c1_res, t1, in_channels, out_channels, dict_manager1, event5, event6):
     block = nn.Sequential(*list(block.children()))[:]
     out = F.adaptive_avg_pool2d(input, output_size=(1, 1))
-    out = format(out)
     conv2d1 = GetSEConv(block[0], in_channels, out_channels)(out)
     relu = reluForServer1(conv2d1, dict_manager, event1, event2, event3, event4, a1, b1, c1)
     conv2d2 = GetSEConv(block[2], out_channels, in_channels)(relu)
@@ -484,7 +532,6 @@ def SEBlock2(block, input, dict_manager, event1, event2, event3, event4, a1, b1,
              c1, c1_mul, c1_res, t1, in_channels, out_channels, dict_manager1, event5, event6):
     block = nn.Sequential(*list(block.children()))[:]
     out = F.adaptive_avg_pool2d(input, output_size=(1, 1))
-    out = format(out)
     conv2d1 = GetSEConv(block[0], in_channels, out_channels)(out)
     relu = reluForServer2(conv2d1, dict_manager, event1, event2, event3, event4, a1, b1, c1)
     conv2d2 = GetSEConv(block[2], out_channels, in_channels)(relu)
@@ -518,7 +565,7 @@ def sigmoidServer1(input, dict_manager, event1, event2, event3, event4, a1, b1, 
     (c1_mul_, c1_res_, t1_, a1_, b1_, c1_) = generate_sigmoid_share(input, a1, b1, c1, c1_res, c1_mul, t1)
     sig = serverSigmoidAll1(input.data, c1_mul_, c1_res_, t1_, a1_, b1_, c1_, dict_manager, event1, event2, event3,
                             event4, event5, event6)
-    return format(sig)
+    return sig
 
 
 def sigmoidServer2(input, dict_manager, event1, event2, event3, event4, a2, b2, c2, c2_res, c2_mul,
@@ -526,7 +573,7 @@ def sigmoidServer2(input, dict_manager, event1, event2, event3, event4, a2, b2, 
     (c2_mul_, c2_res_, t2_, a2_, b2_, c2_) = generate_sigmoid_share(input, a2, b2, c2, c2_res, c2_mul, t2)
     sig = serverSigmoidAll2(input.data, c2_mul_, c2_res_, t2_, a2_, b2_, c2_, dict_manager, event1, event2, event3,
                             event4, event5, event6)
-    return format(sig)
+    return sig
 
 
 def sigmoidMulAddForServer1(input, dict_manager, event1, event2, event3, event4, a1, b1, c1, c1_res, c1_mul,
@@ -536,7 +583,7 @@ def sigmoidMulAddForServer1(input, dict_manager, event1, event2, event3, event4,
     sig = serverSigmoidAll1(input.data, c1_mul_, c1_res_, t1_, a1_, b1_, c1_, dict_manager, event1, event2, event3,
                             event4, event5, event6)
     sigMulAdd = SecMulServer1(sig.data, input.data, a1_, b1_, c1_, dict_manager, event1, event2) + input
-    return format(sigMulAdd)
+    return sigMulAdd
 
 
 def sigmoidMulAddForServer2(input, dict_manager, event1, event2, event3, event4, a2, b2, c2, c2_res, c2_mul,
@@ -545,7 +592,7 @@ def sigmoidMulAddForServer2(input, dict_manager, event1, event2, event3, event4,
     sig = serverSigmoidAll2(input.data, c2_mul_, c2_res_, t2_, a2_, b2_, c2_, dict_manager, event1, event2, event3,
                             event4, event5, event6)
     sigMulAdd = SecMulServer2(sig.data, input.data, a2_, b2_, c2_, dict_manager, event1, event2) + input
-    return format(sigMulAdd)
+    return sigMulAdd
 
 
 def sigmoidMulForServer1(input, dict_manager, event1, event2, event3, event4, a1, b1, c1, c1_res, c1_mul,
@@ -585,6 +632,13 @@ def random_c():
     return c
 
 
+def random_c_mul():
+    c = random.uniform(1, 2)
+    while (c - 0 < 1e-32):
+        c = random.uniform(1, 2)
+    return c
+
+
 def get_model():
     model = create_model(num_classes=2).to('cpu')
     model.load_state_dict(torch.load('', map_location='cpu'))
@@ -601,7 +655,6 @@ def seModule1(input, liner1, liner2, dict_manager, event1, event2, event3, event
               dict_manager1, event5, event6):
     b, c, _, _ = input.size()
     out = torch.mean(input, (2, 3), keepdim=True).view(b, c)
-    out = format(out)
     se1 = liner1(out)
     se_relu = reluForServer1(se1, dict_manager, event1, event2, event3, event4, a1, b1, c1)
     se2 = liner2(se_relu)
@@ -617,7 +670,6 @@ def seModule2(input, liner1, liner2, dict_manager, event1, event2, event3, event
               dict_manager1, event5, event6):
     b, c, _, _ = input.size()
     out = torch.mean(input, (2, 3), keepdim=True).view(b, c)
-    out = format(out)
     se1 = liner1(out)
     se_relu = reluForServer2(se1, dict_manager, event1, event2, event3, event4, a2, b2, c2)
     se2 = liner2(se_relu)
@@ -657,10 +709,14 @@ def server1_Model(event1, event2, event3, event4, image_1, a1, b1, c1, c1_mul, c
 
     # concat
     conv4_0_0 = torch.cat((conv3_1_relu, fres), 1)
+    conv4_0_0 = formatSigmoid1(conv4_0_0.data, dict_manager, event1, event2)
+    conv4_0_0 = formatSigmoid1(conv4_0_0.data, dict_manager, event1, event2)
+
     f1 = conv4_0_0
 
     # sigmoid*x+x
-    sigMulAdd = sigmoidMulAddForServer1(conv4_0_0, dict_manager, event1, event2, event3, event4, a1, b1, c1, c1_res,
+    sigMulAdd = sigmoidMulAddForServer1(conv4_0_0.data, dict_manager, event1, event2, event3, event4, a1, b1, c1,
+                                        c1_res,
                                         c1_mul, t1, dict_manager1, event5, event6)
 
     # print(f1)
@@ -679,10 +735,13 @@ def server1_Model(event1, event2, event3, event4, image_1, a1, b1, c1, c1_mul, c
     conv6_0_1 = torch.cat((conv5_1_relu, f1), 1)
     conv6_0_2 = torch.cat((conv6_0_1, fres), 1)
 
+    conv6_0_2 = formatSigmoid1(conv6_0_2.data, dict_manager, event1, event2)
+    conv6_0_2 = formatSigmoid1(conv6_0_2.data, dict_manager, event1, event2)
+
     # sigmoid*x+x
-    sigMulAdd = sigmoidMulAddForServer1(conv6_0_2, dict_manager, event1, event2, event3, event4, a1, b1, c1, c1_res,
-                                        c1_mul,
-                                        t1, dict_manager1, event5, event6)
+    sigMulAdd = sigmoidMulAddForServer1(conv6_0_2.data, dict_manager, event1, event2, event3, event4, a1, b1, c1,
+                                        c1_res,
+                                        c1_mul, t1, dict_manager1, event5, event6)
 
     # se
     se = seModule1(sigMulAdd, liner6_1, liner6_2, dict_manager, event1, event2, event3, event4, a1, b1, c1, c1_res,
@@ -807,9 +866,13 @@ def server2_Model(event1, event2, event3, event4, image_2, a2, b2, c2, c2_mul,
 
     # concat
     conv4_0_0 = torch.cat((conv3_1_relu, fres), 1)
+    conv4_0_0 = formatSigmoid2(conv4_0_0.data, dict_manager, event1, event2)
+    conv4_0_0 = formatSigmoid2(conv4_0_0.data, dict_manager, event1, event2)
+
     f1 = conv4_0_0
 
-    sigMulAdd = sigmoidMulAddForServer2(conv4_0_0, dict_manager, event1, event2, event3, event4, a2, b2, c2, c2_res,
+    sigMulAdd = sigmoidMulAddForServer2(conv4_0_0.data, dict_manager, event1, event2, event3, event4, a2, b2, c2,
+                                        c2_res,
                                         c2_mul, t2, dict_manager1, event5, event6)
     # print(f1)
 
@@ -827,8 +890,12 @@ def server2_Model(event1, event2, event3, event4, image_2, a2, b2, c2, c2_mul,
     conv6_0_1 = torch.cat((conv5_1_relu, f1), 1)
     conv6_0_2 = torch.cat((conv6_0_1, fres), 1)
 
+    conv6_0_2 = formatSigmoid2(conv6_0_2.data, dict_manager, event1, event2)
+    conv6_0_2 = formatSigmoid2(conv6_0_2.data, dict_manager, event1, event2)
+
     # sigmoid*x+x
-    sigMulAdd = sigmoidMulAddForServer2(conv6_0_2, dict_manager, event1, event2, event3, event4, a2, b2, c2, c2_res,
+    sigMulAdd = sigmoidMulAddForServer2(conv6_0_2.data, dict_manager, event1, event2, event3, event4, a2, b2, c2,
+                                        c2_res,
                                         c2_mul, t2, dict_manager1, event5, event6)
     # se
     se = seModule2(sigMulAdd, liner6_1, liner6_2, dict_manager, event1, event2, event3, event4, a2, b2, c2, c2_res,
@@ -934,7 +1001,6 @@ def Model(image_1, image_2, conv1_0, conv1_1BN, conv2_0, conv2_1BN, conv3_0, con
     event7 = torch.multiprocessing.Event()
     event8 = torch.multiprocessing.Event()
 
-    lock = torch.multiprocessing.Lock()
     # global dict_manager
     dict_manager = Manager().dict()
     dict_manager1 = Manager().dict()
@@ -951,8 +1017,8 @@ def Model(image_1, image_2, conv1_0, conv1_1BN, conv2_0, conv2_1BN, conv3_0, con
     c2 = c - c1
 
     # 指数的
-    c1_mul = random_c()
-    c2_mul = random_c()
+    c1_mul = random_c_mul()
+    c2_mul = random_c_mul()
     c = c1_mul * c2_mul
     c1_res = random_c()
     c2_res = c - c1_res
@@ -989,7 +1055,6 @@ def Model(image_1, image_2, conv1_0, conv1_1BN, conv2_0, conv2_1BN, conv3_0, con
 
 if __name__ == '__main__':
     model = get_model()
-    print(model)
     new_model = nn.Sequential(*list(model.children()))[:]
     model = model.state_dict()
 
@@ -1120,8 +1185,9 @@ if __name__ == '__main__':
          transforms.ToTensor()
          ])
 
+
     testData = dsets.ImageFolder('', data_transform)
-    testLoader = torch.utils.data.DataLoader(dataset=testData, batch_size=10, shuffle=False)
+    testLoader = torch.utils.data.DataLoader(dataset=testData, batch_size=1, shuffle=False)
     correct = 0
     total = 0
     list = []
@@ -1131,8 +1197,7 @@ if __name__ == '__main__':
         image_2 = image - image_1
 
         result = Model(image_1, image_2, conv1_0, conv1_1BN, conv2_0, conv2_1BN, conv3_0, conv3_1BN, conv4_0, conv4_1BN,
-                       conv5_0,
-                       conv5_1BN, liner6_1, liner6_2, new_model)
+                       conv5_0, conv5_1BN, liner6_1, liner6_2, new_model)
         print(result)
         result = torch.tensor(result)
         _, predicted = torch.max(torch.sigmoid(result.data), 1)
